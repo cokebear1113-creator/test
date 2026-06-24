@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>전자칠판 시계 & 타이머</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Pretendard', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'Roboto', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Pretendard 폰트 불러오기 (노션과 잘 어울리는 깔끔한 폰트) -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+  <style>
+    /* 여백 제거 및 화면 꽉 차게 설정 */
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Pretendard', sans-serif;
+    }
+    
+    /* 10초 남았을 때 깜빡이는 애니메이션 */
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .animate-urgent-blink {
+      animation: blink 1s infinite;
+      color: #ef4444 !important; /* Tailwind red-500 */
+    }
+  </style>
+</head>
+<body class="h-full bg-[#fbfbfa] text-[#37352f] dark:bg-[#191919] dark:text-[#ebebeb] transition-colors duration-300 select-none">
+
+  <!-- 메인 레이아웃: 화면을 좌우 1:1 분할 (모바일에서는 상하 분할) -->
+  <div class="h-full w-full flex flex-col md:flex-row relative">
+    
+    <!-- 우측 상단 테마 전환 및 사운드 테스트 버튼 모음 -->
+    <div class="absolute top-4 right-4 z-50 flex items-center gap-2">
+      <!-- 사운드 테스트 버튼 -->
+      <button id="testAudioBtn" class="p-2.5 rounded-lg bg-[#f1f1ef] hover:bg-[#e3e3e2] dark:bg-[#2c2c2c] dark:hover:bg-[#3f3f3f] transition-colors duration-200 text-xs font-medium flex items-center gap-1.5" title="알림음 확인해보기">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+        </svg>
+        <span>소리 테스트</span>
+      </button>
+
+      <!-- 수동 다크모드 전환 버튼 -->
+      <button id="themeToggleBtn" class="p-2.5 rounded-lg bg-[#f1f1ef] hover:bg-[#e3e3e2] dark:bg-[#2c2c2c] dark:hover:bg-[#3f3f3f] transition-colors duration-200" title="테마 변경">
+        <!-- Sun icon (다크모드일 때 보임) -->
+        <svg id="sunIcon" class="h-4 w-4 hidden dark:block text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.364l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+        </svg>
+        <!-- Moon icon (라이트모드일 때 보임) -->
+        <svg id="moonIcon" class="h-4 w-4 block dark:hidden text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- 1. 왼쪽 영역: 실시간 시계 (Clock) -->
+    <div class="flex-1 flex flex-col justify-center items-center p-6 border-b md:border-b-0 md:border-r border-[#e9e9e6] dark:border-[#2c2c2c]">
+      <div class="text-center">
+        <!-- 날짜 및 요일 -->
+        <div id="dateDisplay" class="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-semibold tracking-tight text-[#7c7b77] dark:text-[#9b9b9b] mb-4">
+          0000년 00월 00일 일요일
+        </div>
+        <!-- 대형 시계 시간 -->
+        <div id="timeDisplay" class="text-6xl sm:text-7xl md:text-8xl lg:text-9xl font-bold tracking-tighter tabular-nums text-[#191711] dark:text-[#ffffff]">
+          00:00:00
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 오른쪽 영역: 멀티 타이머 (Timer) -->
+    <div class="flex-1 flex flex-col justify-center items-center p-6 bg-[#f7f7f5] dark:bg-[#1f1f1f] transition-colors duration-300">
+      <div class="w-full max-w-xl text-center flex flex-col items-center">
+        
+        <!-- 타이머 제어/조절 패널 (동작 중이 아닐 때만 노출하기 쉽게 설계하되, 시인성 확보) -->
+        <div id="timerAdjusters" class="flex items-center justify-center gap-10 mb-6 transition-opacity duration-300">
+          <!-- 분 조절기 -->
+          <div class="flex flex-col items-center">
+            <span class="text-xs font-bold uppercase tracking-wider text-[#9b9b9b] mb-2">분 (Min)</span>
+            <div class="flex items-center gap-1.5">
+              <button onclick="adjustTime(-5, 'min')" class="w-10 h-10 rounded-lg bg-[#ededeb] hover:bg-[#e3e3e2] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] font-bold text-lg transition-colors">-5</button>
+              <button onclick="adjustTime(-1, 'min')" class="w-10 h-10 rounded-lg bg-[#ededeb] hover:bg-[#e3e3e2] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] font-bold text-lg transition-colors">-1</button>
+              <span class="w-8 text-center text-xs text-gray-400">/</span>
+              <button onclick="adjustTime(1, 'min')" class="w-10 h-10 rounded-lg bg-[#ededeb] hover:bg-[#e3e3e2] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] font-bold text-lg transition-colors">+1</button>
+              <button onclick="adjustTime(5, 'min')" class="w-10 h-10 rounded-lg bg-[#ededeb] hover:bg-[#e3e3e2] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] font-bold text-lg transition-colors">+5</button>
+            </div>
+          </div>
+
+          <!-- 초 조절기 -->
+          <div class="flex flex-col items-center">
+            <span class="text-xs font-bold uppercase tracking-wider text-[#9b9b9b] mb-2">초 (Sec)</span>
+            <div class="flex items-center gap-1.5">
+              <button onclick="adjustTime(-10, 'sec')" class="w-10 h-10 rounded-lg bg-[#ededeb] hover:bg-[#e3e3e2] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] font-bold text-lg transition-colors">-10</button>
+              <button onclick="adjustTime(-1, 'sec')" class="w-10 h-10 rounded-lg bg-[#ededeb] hover:bg-[#e3e3e2] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] font-bold text-lg transition-colors">-1</button>
+              <span class="w-8 text-center text-xs text-gray-400">/</span>
+              <button onclick="adjustTime(1, 'sec')" class="w-10 h-10 rounded-lg bg-[#ededeb] hover:bg-[#e3e3e2] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] font-bold text-lg transition-colors">+1</button>
+              <button onclick="adjustTime(10, 'sec')" class="w-10 h-10 rounded-lg bg-[#ededeb] hover:bg-[#e3e3e2] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] font-bold text-lg transition-colors">+10</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 대형 타이머 디스플레이 -->
+        <div id="timerDisplay" class="text-7xl sm:text-8xl md:text-9xl lg:text-[10rem] font-bold tracking-tighter tabular-nums text-[#191711] dark:text-[#ffffff] transition-colors duration-200 my-4">
+          05:00
+        </div>
+
+        <!-- 신속 프리셋 설정 버튼 (교실 현장에서 자주 쓰이는 숏컷) -->
+        <div id="presetContainer" class="flex flex-wrap justify-center gap-2 mb-8 max-w-sm">
+          <button onclick="setPreset(1)" class="px-3 py-1.5 rounded-full text-xs font-medium bg-[#e9e9e6] hover:bg-[#ddddd9] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] transition-all">1분</button>
+          <button onclick="setPreset(3)" class="px-3 py-1.5 rounded-full text-xs font-medium bg-[#e9e9e6] hover:bg-[#ddddd9] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] transition-all">3분</button>
+          <button onclick="setPreset(5)" class="px-3 py-1.5 rounded-full text-xs font-medium bg-[#e9e9e6] hover:bg-[#ddddd9] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] transition-all">5분</button>
+          <button onclick="setPreset(10)" class="px-3 py-1.5 rounded-full text-xs font-medium bg-[#e9e9e6] hover:bg-[#ddddd9] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] transition-all">10분</button>
+          <button onclick="setPreset(15)" class="px-3 py-1.5 rounded-full text-xs font-medium bg-[#e9e9e6] hover:bg-[#ddddd9] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] transition-all">15분</button>
+        </div>
+
+        <!-- 타이머 작동 버튼 그룹 -->
+        <div class="flex items-center justify-center gap-4 w-full max-w-xs">
+          <!-- 시작/일시정지 버튼 -->
+          <button id="startPauseBtn" class="flex-1 py-4 px-6 rounded-xl text-lg font-bold bg-[#2383e2] hover:bg-[#1a6cb9] text-white transition-all shadow-md active:scale-95 flex items-center justify-center gap-2">
+            <svg id="playIcon" class="h-5 w-5 fill-current" viewBox="0 0 20 20">
+              <path d="M4.5 3.5v13L16 10z"/>
+            </svg>
+            <svg id="pauseIcon" class="h-5 w-5 fill-current hidden" viewBox="0 0 20 20">
+              <path d="M5 4h3v12H5zm7 0h3v12h-3z"/>
+            </svg>
+            <span id="startPauseText">시작</span>
+          </button>
+          
+          <!-- 리셋/초기화 버튼 -->
+          <button id="resetBtn" class="py-4 px-6 rounded-xl text-lg font-bold bg-[#ededeb] hover:bg-[#e3e3e2] text-[#37352f] dark:bg-[#2d2d2d] dark:hover:bg-[#3a3a3a] dark:text-[#ebebeb] transition-all active:scale-95" title="타이머 시간 초기화">
+            초기화
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 노션 임베드 알림 상자 (종소리 연주 시 사용자 인터랙션 부족으로 소리가 안 나는 현상 대응) -->
+  <div id="audioUnlockBanner" class="fixed bottom-4 left-4 right-4 md:left-auto md:w-96 p-4 rounded-xl shadow-lg border border-[#e9e9e6] dark:border-[#2c2c2c] bg-white dark:bg-[#252525] text-xs transition-transform duration-300 translate-y-24 z-50">
+    <div class="flex items-start gap-3">
+      <div class="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+        </svg>
+      </div>
+      <div class="flex-1">
+        <p class="font-bold mb-1">알림 소리가 차단되었을 수 있습니다</p>
+        <p class="text-[#7c7b77] dark:text-[#9b9b9b] mb-2 leading-relaxed">브라우저나 노션 보안 설정 상, 화면을 한 번 클릭해 주셔야 타이머 끝날 때 종소리가 정상 출력됩니다.</p>
+        <button id="unlockBtn" class="px-3 py-1 bg-blue-600 text-white rounded font-medium hover:bg-blue-700 transition-colors">확인 및 사운드 켜기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 메인 스크립트 소스 -->
+  <script>
+    // --- 1. 테마(Theme) 자동 탐지 및 연동 제어 ---
+    const htmlEl = document.documentElement;
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+
+    // 시스템 및 노션 테마 속성 분석
+    function initTheme() {
+      // 1) Notion 다크모드는 대개 body나 html에 'dark-mode' 클래스 또는 attributes로 식별됨
+      // 2) 브라우저 시스템 테마 체크
+      const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const isNotionDark = document.body.classList.contains('dark-mode') || document.documentElement.classList.contains('dark');
+      
+      if (isSystemDark || isNotionDark) {
+        htmlEl.classList.add('dark');
+      } else {
+        htmlEl.classList.remove('dark');
+      }
+    }
+
+    // 테마 수동 스위칭
+    themeToggleBtn.addEventListener('click', () => {
+      if (htmlEl.classList.contains('dark')) {
+        htmlEl.classList.remove('dark');
+      } else {
+        htmlEl.classList.add('dark');
+      }
+    });
+
+    // 시스템 테마 변경 감지 실시간 반영
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      if (e.matches) {
+        htmlEl.classList.add('dark');
+      } else {
+        htmlEl.classList.remove('dark');
+      }
+    });
+
+    // --- 2. 실시간 대형 시계 구현 ---
+    const dateDisplay = document.getElementById('dateDisplay');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const weekDays = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+
+    function updateClock() {
+      const now = new Date();
+      
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const date = String(now.getDate()).padStart(2, '0');
+      const dayName = weekDays[now.getDay()];
+
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+
+      dateDisplay.textContent = `${year}년 ${month}월 ${date}일 ${dayName}`;
+      timeDisplay.textContent = `${hours}:${minutes}:${seconds}`;
+    }
+    
+    // 시계 시작
+    setInterval(updateClock, 1000);
+    updateClock(); // 초기화 즉시 실행
+
+
+    // --- 3. 기계식 학교 종소리 자체 사운드 합성 (Web Audio API) ---
+    // 외부 오디오 링크를 쓰면 임베드 시 CORS 에러나 차단 우려가 높으므로, Web Audio API를 활용해 직접 청아한 학교 벨소리를 연주합니다.
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    // 소리 재생 도우미 함수 (주파수, 지속시간, 시작시간 설정)
+    function playTone(freq, duration, startTime) {
+      if (!audioCtx) return;
+      
+      const osc = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      // 학교 종소리는 청아한 사인파(Sine)와 부드러운 하모닉스 조합으로 생성
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime);
+      
+      // 타격감과 잔향이 유지되는 음량 곡선 제어 (기계식 차임벨 느낌)
+      gainNode.gain.setValueAtTime(0.3, startTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      
+      osc.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    }
+
+    // 실제 전통적인 '학교 종소리' 4음계 멜로디 (솔-미-레-도 / 솔-라-솔-미 등)
+    // 딩-동-댕-동 (학교 종소리 패턴) 템포에 맞춰 재생
+    function playSchoolBell() {
+      initAudio();
+      if (!audioCtx) return;
+
+      const now = audioCtx.currentTime;
+      const beat = 0.6; // 음표 한 박자의 길이
+
+      // 주파수 정보: 미(E4)=329.63, 솔(G4)=392.00, 라(A4)=440.00, 도(C5)=523.25
+      // 학교종이 땡땡땡 멜로디의 핵심구간 "솔 솔 라 라 솔 솔 미" 형식 또는 대표 "딩동댕동"
+      // 여기서는 가장 보편적인 "솔 미 레 도 ~ 솔 라 솔 미" 중 간결하고 명확한 4음 차임벨 연주
+      
+      // 1. 미 (E4)
+      playTone(329.63, 1.2, now);
+      // 2. 솔 (G4)
+      playTone(392.00, 1.2, now + beat);
+      // 3. 라 (A4)
+      playTone(440.00, 1.2, now + beat * 2);
+      // 4. 도 (C5)
+      playTone(523.25, 1.8, now + beat * 3);
+    }
+
+
+    // --- 4. 타이머 기능 로직 구현 ---
+    let timerDuration = 300; // 초기 디폴트 5분 (단위: 초)
+    let timeRemaining = timerDuration;
+    let timerInterval = null;
+    let isRunning = false;
+
+    const timerDisplay = document.getElementById('timerDisplay');
+    const timerAdjusters = document.getElementById('timerAdjusters');
+    const presetContainer = document.getElementById('presetContainer');
+    const startPauseBtn = document.getElementById('startPauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const playIcon = document.getElementById('playIcon');
+    const pauseIcon = document.getElementById('pauseIcon');
+    const startPauseText = document.getElementById('startPauseText');
+
+    // 디스플레이 업데이트
+    function updateTimerDisplay() {
+      const minutes = Math.floor(timeRemaining / 60);
+      const seconds = timeRemaining % 60;
+      timerDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      
+      // 10초 이하 남았을 때 시각 효과 (빨갛게 깜빡임)
+      if (isRunning && timeRemaining <= 10 && timeRemaining > 0) {
+        timerDisplay.classList.add('animate-urgent-blink');
+      } else {
+        timerDisplay.classList.remove('animate-urgent-blink');
+        if (timeRemaining <= 10 && timeRemaining > 0) {
+          timerDisplay.style.color = '#ef4444'; // 빨갛게 고정
+        } else {
+          timerDisplay.style.color = ''; // 테마 기본 색상으로 환원
+        }
+      }
+    }
+
+    // 타이머 조절 버튼 트리거
+    function adjustTime(amount, unit) {
+      if (isRunning) return; // 실행 중에는 조절 불가
+      
+      let change = 0;
+      if (unit === 'min') {
+        change = amount * 60;
+      } else if (unit === 'sec') {
+        change = amount;
+      }
+
+      const tempTime = timerDuration + change;
+      if (tempTime >= 0 && tempTime <= 5999) { // 최대 99분 59초로 제한
+        timerDuration = tempTime;
+        timeRemaining = timerDuration;
+        updateTimerDisplay();
+      }
+    }
+
+    // 간편 분 설정 프리셋 변경
+    function setPreset(minutes) {
+      if (isRunning) return;
+      timerDuration = minutes * 60;
+      timeRemaining = timerDuration;
+      updateTimerDisplay();
+    }
+
+    // 타이머 동작 (카운트다운)
+    function tick() {
+      if (timeRemaining > 0) {
+        timeRemaining--;
+        updateTimerDisplay();
+        
+        // 정시 도착
+        if (timeRemaining === 0) {
+          stopTimer();
+          playSchoolBell(); // 맑은 종소리 울리기
+          
+          // 알림 비주얼 효과 극대화 (화면 전체 찰나의 피드백)
+          timerDisplay.classList.remove('animate-urgent-blink');
+          timerDisplay.style.color = '#10b981'; // 완료 시 일시적 초록색 설정
+          setTimeout(() => { timerDisplay.style.color = ''; }, 3000);
+        }
+      }
+    }
+
+    // 타이머 시작/일시정지 제어
+    function startPauseTimer() {
+      initAudio(); // 브라우저 오디오 구동 준비 활성화
+
+      if (isRunning) {
+        // 일시정지 모드 돌입
+        stopTimer();
+      } else {
+        // 시작 모드 돌입
+        if (timeRemaining <= 0) return; // 시간이 없으면 불가능
+        
+        isRunning = true;
+        timerInterval = setInterval(tick, 1000);
+        
+        // UI 변경 (일시정지 형태)
+        playIcon.classList.add('hidden');
+        pauseIcon.classList.remove('hidden');
+        startPauseText.textContent = '일시정지';
+        startPauseBtn.classList.replace('bg-[#2383e2]', 'bg-[#e03e3e]'); // 더 짙은 오렌지/레드로 버튼 테마 전환
+        startPauseBtn.classList.replace('hover:bg-[#1a6cb9]', 'hover:bg-[#c13030]');
+
+        // 실행 중에는 세팅기 투명화하여 집중도 향상
+        timerAdjusters.style.opacity = '0.15';
+        timerAdjusters.style.pointerEvents = 'none';
+        presetContainer.style.opacity = '0.15';
+        presetContainer.style.pointerEvents = 'none';
+      }
+    }
+
+    // 타이머 완전 멈춤
+    function stopTimer() {
+      isRunning = false;
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+      
+      // UI 복구
+      playIcon.classList.remove('hidden');
+      pauseIcon.classList.add('hidden');
+      startPauseText.textContent = '시작';
+      startPauseBtn.classList.replace('bg-[#e03e3e]', 'bg-[#2383e2]');
+      startPauseBtn.classList.replace('hover:bg-[#c13030]', 'hover:bg-[#1a6cb9]');
+
+      timerAdjusters.style.opacity = '1';
+      timerAdjusters.style.pointerEvents = 'auto';
+      presetContainer.style.opacity = '1';
+      presetContainer.style.pointerEvents = 'auto';
+      
+      updateTimerDisplay();
+    }
+
+    // 초기화 버튼 이벤트
+    function resetTimer() {
+      stopTimer();
+      timeRemaining = timerDuration;
+      updateTimerDisplay();
+    }
+
+    // 이벤트 리스너 세팅
+    startPauseBtn.addEventListener('click', startPauseTimer);
+    resetBtn.addEventListener('click', resetTimer);
+
+
+    // --- 5. 사운드 락 해제 및 웹 접근성 예외 제어 ---
+    const audioUnlockBanner = document.getElementById('audioUnlockBanner');
+    const unlockBtn = document.getElementById('unlockBtn');
+    const testAudioBtn = document.getElementById('testAudioBtn');
+
+    // 최초 클릭 또는 액션 시 배너 하강 처리
+    function unlockAudioContext() {
+      initAudio();
+      audioUnlockBanner.style.transform = 'translateY(150%)'; // 화면 아래로 내려서 안보이게 함
+    }
+
+    // 상단 오디오 테스트 버튼 클릭 시 즉시 종소리 시범 재생
+    testAudioBtn.addEventListener('click', () => {
+      initAudio();
+      playSchoolBell();
+    });
+
+    // 해제 버튼 및 전역 바디 클릭 수렴
+    unlockBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      unlockAudioContext();
+    });
+    
+    // 사용자가 페이지 어딘가를 클릭하면 알아서 오디오 노드가 활성화되도록 세팅
+    document.body.addEventListener('click', () => {
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }, { once: false });
+
+    // 모바일/임베드 상태 고려, 2초 후에 오디오 안내용 배너를 위로 올려 알려줍니다.
+    setTimeout(() => {
+      // 오디오가 미활성화된 임베드 상태일 때만 알림 노출
+      if (!audioCtx || audioCtx.state === 'suspended') {
+        audioUnlockBanner.style.transform = 'translateY(0)';
+      }
+    }, 2000);
+
+    // 초기 실행
+    initTheme();
+    updateTimerDisplay();
+  </script>
+</body>
+</html>
